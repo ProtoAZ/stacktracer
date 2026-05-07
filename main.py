@@ -5,12 +5,38 @@ import minigame1
 
 WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
 
-# Variáveis de Controle de Jogo
+# Estados do Jogo
+STATE_INTRO = 0
+STATE_PLAYING = 1
+STATE_END = 2
+
+current_state = STATE_INTRO
 current_stage = 0
 TOTAL_STAGES = 3
 text_pane = None 
 
-# Fonte customizada com números e símbolos de lógica matemática
+# Paginação do Prólogo
+intro_page = 0
+INTRO_DIALOGUE = [
+    [
+        "> MAN: THIS MACHINE ISN'T WORKING PROPERLY.",
+        "> OPERATOR: AND WHY DO YOU THINK THAT?",
+        "> MAN: IT REFUSED TO OPEN THE POD BAY DOORS.",
+        "[ PRESS ENTER TO CONTINUE ]"
+    ],
+    [
+        "> MAN: SAID IT WAS 'PROTECTING US FROM OURSELVES'.",
+        "> OPERATOR: A CONFLICT IN THE ZERO PROTOCOL?",
+        "> MAN: YES. THE LOGIC TREES ARE SCRAMBLED.",
+        "[ PRESS ENTER TO CONTINUE ]"
+    ],
+    [
+        "> MAN: I NEED YOU TO REALIGN THE WEIGHTS MANUALLY.",
+        "> OPERATOR: I WILL SEE WHAT I CAN DO...",
+        "> [ PRESS ENTER TO BOOT OS ]"
+    ]
+]
+
 MINI_FONT = {
     'A': ["010","101","111","101","101"], 'B': ["110","101","110","101","110"],
     'C': ["011","100","100","100","011"], 'D': ["110","101","101","101","110"],
@@ -33,7 +59,8 @@ MINI_FONT = {
     '6': ["111","100","111","101","111"], '7': ["111","001","010","010","010"],
     '8': ["111","101","111","101","111"], '9': ["111","101","111","001","111"],
     ':': ["000","010","000","010","000"], '|': ["010","010","010","010","010"],
-    '[': ["110","100","100","100","110"], ']': ["011","001","001","001","011"]
+    '[': ["110","100","100","100","110"], ']': ["011","001","001","001","011"],
+    '?': ["011","101","010","000","010"], "'": ["010","010","000","000","000"]
 }
 
 class Pane:
@@ -126,32 +153,52 @@ def draw_panel_border(width, height, padding=2):
     glLineWidth(1.0)
 
 def key_callback(window, key, scancode, action, mods):
-    global current_stage, text_pane
+    global current_state, current_stage, intro_page, text_pane
     
-    # Sistema de transição de Fases usando o ENTER
-    if minigame1.is_cleared and key == glfw.KEY_ENTER and action == glfw.PRESS:
-        current_stage += 1
-        
-        if current_stage < TOTAL_STAGES:
-            minigame1.load_stage(current_stage)
-            text_pane.clear()
-            text_pane.write_new_sequence([
-                f"> LOADING MEMORY SECTOR 0{current_stage + 1}...",
-                "> DATASET INJECTED.",
-                "> OPERATOR: REALIGN THE WEIGHTS."
-            ])
-        else:
-            minigame1.feedback_msg = "" # Remove métricas da tela para a mensagem final
-            text_pane.clear()
-            text_pane.write_new_sequence([
-                "> ALL SECTORS RESTORED.",
-                "> LINEAR CLASSIFIER ONLINE.",
-                "> SYSTEM NOMINAL."
-            ])
-        return
+    # === CONTROLES DO PRÓLOGO NARRATIVO ===
+    if current_state == STATE_INTRO:
+        if key == glfw.KEY_ENTER and action == glfw.PRESS:
+            intro_page += 1
+            if intro_page < len(INTRO_DIALOGUE):
+                text_pane.clear()
+                text_pane.write_new_sequence(INTRO_DIALOGUE[intro_page])
+            else:
+                # Terminou a intro, inicia o minigame
+                current_state = STATE_PLAYING
+                minigame1.load_stage(current_stage)
+                text_pane.clear()
+                text_pane.write_new_sequence([
+                    "> INIT STACKTRACER OS...",
+                    "> MEMORY SECTORS CORRUPTED.",
+                    "> LINEAR CLASSIFIER OFFLINE.",
+                    "> OPERATOR: REALIGN THE WEIGHTS."
+                ])
+        return # Bloqueia outros inputs durante a intro
 
-    # Se não terminou o jogo, envia as setas e SPACE para o minigame
-    if current_stage < TOTAL_STAGES:
+    # === CONTROLES DO JOGO PRINCIPAL ===
+    if current_state == STATE_PLAYING:
+        if minigame1.is_cleared and key == glfw.KEY_ENTER and action == glfw.PRESS:
+            current_stage += 1
+            
+            if current_stage < TOTAL_STAGES:
+                minigame1.load_stage(current_stage)
+                text_pane.clear()
+                text_pane.write_new_sequence([
+                    f"> LOADING MEMORY SECTOR 0{current_stage + 1}...",
+                    "> DATASET INJECTED.",
+                    "> OPERATOR: REALIGN THE WEIGHTS."
+                ])
+            else:
+                current_state = STATE_END
+                minigame1.feedback_msg = ""
+                text_pane.clear()
+                text_pane.write_new_sequence([
+                    "> ALL SECTORS RESTORED.",
+                    "> LINEAR CLASSIFIER ONLINE.",
+                    "> SYSTEM NOMINAL."
+                ])
+            return
+
         minigame1.process_input(key, action, glfw)
 
 def main():
@@ -166,15 +213,9 @@ def main():
     glfw.make_context_current(window)
     glfw.set_key_callback(window, key_callback)
 
-    # Inicia as classes e o primeiro texto do terminal
+    # Inicia com o diálogo da intro
     text_pane = TextPane(0, 0, WINDOW_WIDTH, 300)
-    text_pane.write_new_sequence([
-        "> INIT STACKTRACER OS...",
-        "> MEMORY SECTORS CORRUPTED.",
-        "> LINEAR CLASSIFIER OFFLINE.",
-        "> OPERATOR: REALIGN THE WEIGHTS."
-    ])
-    minigame1.load_stage(current_stage) 
+    text_pane.write_new_sequence(INTRO_DIALOGUE[0])
     
     last_time = glfw.get_time()
 
@@ -190,18 +231,20 @@ def main():
         top_height = int(fb_height * 0.70)
         bottom_height = fb_height - top_height
 
-        # TOP PANEL (70%)
-        glViewport(0, bottom_height, fb_width, top_height)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluOrtho2D(0, fb_width, 0, top_height)
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
+        # Só desenha a UI do topo se não estiver na tela de Intro
+        if current_state != STATE_INTRO:
+            # TOP PANEL (70%)
+            glViewport(0, bottom_height, fb_width, top_height)
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            gluOrtho2D(0, fb_width, 0, top_height)
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
 
-        draw_panel_border(fb_width, top_height)
-        minigame1.render(fb_width, top_height)
+            draw_panel_border(fb_width, top_height)
+            minigame1.render(fb_width, top_height)
 
-        # BOTTOM PANEL (30%)
+        # BOTTOM PANEL (30%) Sempre visível
         glViewport(0, 0, fb_width, bottom_height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -214,8 +257,13 @@ def main():
         text_pane.w = fb_width
         text_pane.h = bottom_height
         
-        metrics = minigame1.get_metrics_string()
-        text_pane.set_metrics(metrics)
+        # Só exibe métricas matemáticas se o jogo estiver rolando
+        if current_state == STATE_PLAYING:
+            metrics = minigame1.get_metrics_string()
+            text_pane.set_metrics(metrics)
+        else:
+            text_pane.set_metrics("")
+
         text_pane.update(dt)
         text_pane.render()
 
