@@ -26,3 +26,21 @@ O jogador interage diretamente com as variáveis da equação linear através do
 - → Seta para Direita: Altera o Peso (Weight). Rotaciona a reta no sentido horário.
 - SPACE: Submeter Calibração. Aciona o cálculo de verificação (Validação OLS). Se o erro for baixo o suficiente, o módulo é destravado.
 - ENTER: Próximo Setor. Avança para a próxima fase após submeter uma calibração válida.
+
+
+#### MINIGAME 02: Logic Trees (Binary Search Tree) Estruturas de Dados:
+ O objetivo é realocar os setores corrompidos de memória (nós) de volta à sua árvore de lógica estrutural. A árvore obedece à regra de ouro da Árvore Binária de Busca (BST): valores menores que a raiz são alocados à esquerda, e valores maiores à direita. O jogo possui 5 objetos  que compõem os dados do sistema.  
+ Transformações Geométricas e SRU/SRO: O modelo foi todo desenvolvido utilizando matrizes de vértices no OpenGL. Para posicionar as peças pelo cenário, o jogo aplica conceitos de Computação Gráfica como SRU (Sistema de Referência do Universo): O painel superior mapeia o mundo entre as coordenadas -1.0 e 1.0. Uma escala global compensa a distorção do Aspect Ratio da tela.SRO (Sistema de Referência do Objeto): Cada nó (hexágono) é gerado a partir de sua própria origem local (0,0), permitindo que receba suas próprias matrizes de Translação, Rotação e Escala sem deformar os demais objetos na tela.  
+
+ ##### Controles
+O jogador interage diretamente com o estado das matrizes através do teclado:  
+
+Teclas de numerais: Selecionam o nó corrompido que receberá as matrizes de transformação.
+
+Setas Direcionais: Alteram as coordenadas X e Y da peça (Translação).
+
+Q / E: Rotacionam o objeto no sentido anti-horário e horário (Rotação).
+
+W / S: Alteram as proporções do objeto (Escala).
+
+SPACE: Executa a submissão de dados. O terminal inferior cruza as posições e exibe o feedback de calibração ("Correto", ou erros específicos de posição/rotação/escala).
