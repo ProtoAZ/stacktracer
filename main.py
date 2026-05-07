@@ -1,60 +1,228 @@
-import sys
 import glfw
 from OpenGL.GL import *
+from OpenGL.GLU import gluOrtho2D
+import minigame1
 
-from stacktracer import TextPane
+WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
 
+# Variáveis de Controle de Jogo
+current_stage = 0
+TOTAL_STAGES = 3
+text_pane = None 
+
+# Fonte customizada com números e símbolos de lógica matemática
+MINI_FONT = {
+    'A': ["010","101","111","101","101"], 'B': ["110","101","110","101","110"],
+    'C': ["011","100","100","100","011"], 'D': ["110","101","101","101","110"],
+    'E': ["111","100","111","100","111"], 'F': ["111","100","110","100","100"],
+    'G': ["011","100","101","101","011"], 'H': ["101","101","111","101","101"],
+    'I': ["111","010","010","010","111"], 'J': ["001","001","001","101","011"],
+    'K': ["101","110","100","110","101"], 'L': ["100","100","100","100","111"],
+    'M': ["101","111","101","101","101"], 'N': ["110","101","101","101","101"],
+    'O': ["010","101","101","101","010"], 'P': ["110","101","110","100","100"],
+    'Q': ["010","101","101","110","001"], 'R': ["110","101","110","101","101"],
+    'S': ["011","100","010","001","110"], 'T': ["111","010","010","010","010"],
+    'U': ["101","101","101","101","011"], 'V': ["101","101","101","101","010"],
+    'W': ["101","101","101","111","101"], 'X': ["101","101","010","101","101"],
+    'Y': ["101","101","010","010","010"], 'Z': ["111","001","010","100","111"],
+    '.': ["000","000","000","000","010"], ' ': ["000","000","000","000","000"],
+    '>': ["100","010","001","010","100"], '-': ["000","000","111","000","000"],
+    '0': ["111","101","101","101","111"], '1': ["010","110","010","010","111"],
+    '2': ["111","001","111","100","111"], '3': ["111","001","111","001","111"],
+    '4': ["101","101","111","001","001"], '5': ["111","100","111","001","111"],
+    '6': ["111","100","111","101","111"], '7': ["111","001","010","010","010"],
+    '8': ["111","101","111","101","111"], '9': ["111","101","111","001","111"],
+    ':': ["000","010","000","010","000"], '|': ["010","010","010","010","010"],
+    '[': ["110","100","100","100","110"], ']': ["011","001","001","001","011"]
+}
+
+class Pane:
+    def __init__(self, x, y, w, h, bg_color=(0.05, 0.05, 0.05)):
+        self.x, self.y, self.w, self.h = x, y, w, h
+        self.bg_color = bg_color
+
+class TextPane(Pane):
+    def __init__(self, x, y, w, h, bg_color=(0.02, 0.05, 0.02)):
+        super().__init__(x, y, w, h, bg_color)
+        self.lines = []
+        self.dynamic_line = ""
+        self.pixel_size = 2      
+        self.char_spacing = 2
+        self.line_spacing = 4    
+
+        self.visible_chars = 0
+        self.timer = 0.0
+        self.speed = 0.015
+
+    def clear(self):
+        self.lines = []
+        self.dynamic_line = ""
+        self.visible_chars = 0
+        self.timer = 0.0
+
+    def write_new_sequence(self, new_lines):
+        self.lines = new_lines
+        self.visible_chars = 0
+        self.timer = 0.0
+
+    def update(self, dt):
+        total_chars = sum(len(line) for line in self.lines)
+        if self.visible_chars < total_chars:
+            self.timer += dt
+            if self.timer >= self.speed:
+                self.visible_chars += 1
+                self.timer = 0.0
+
+    def set_metrics(self, metrics_str):
+        self.dynamic_line = metrics_str.upper()
+
+    def draw_char(self, char, x, y):
+        if char not in MINI_FONT: return
+        matrix = MINI_FONT[char]
+        glBegin(GL_QUADS)
+        for row_idx, row in enumerate(matrix):
+            for col_idx, pixel in enumerate(row):
+                if pixel == '1':
+                    px = x + (col_idx * self.pixel_size)
+                    py = y - (row_idx * self.pixel_size)
+                    glVertex2f(px, py)
+                    glVertex2f(px + self.pixel_size, py)
+                    glVertex2f(px + self.pixel_size, py - self.pixel_size)
+                    glVertex2f(px, py - self.pixel_size)
+        glEnd()
+
+    def render(self):
+        glColor3f(0.2, 0.9, 0.2) 
+        start_x = 15
+        current_y = self.h - 20 
+        chars_drawn = 0
+
+        for line in self.lines:
+            current_x = start_x
+            for char in line:
+                if chars_drawn >= self.visible_chars: return 
+                self.draw_char(char, current_x, current_y)
+                current_x += (3 * self.pixel_size) + (self.char_spacing * self.pixel_size)
+                chars_drawn += 1
+            current_y -= (5 * self.pixel_size) + (self.line_spacing * self.pixel_size)
+
+        total_chars = sum(len(line) for line in self.lines)
+        if self.visible_chars >= total_chars and self.dynamic_line:
+            current_y -= (2 * self.pixel_size) 
+            current_x = start_x
+            for char in self.dynamic_line:
+                self.draw_char(char, current_x, current_y)
+                current_x += (3 * self.pixel_size) + (self.char_spacing * self.pixel_size)
+
+def draw_panel_border(width, height, padding=2):
+    glColor3f(0.2, 0.9, 0.2)
+    glLineWidth(2.0)
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(padding, padding)
+    glVertex2f(width - padding, padding)
+    glVertex2f(width - padding, height - padding)
+    glVertex2f(padding, height - padding)
+    glEnd()
+    glLineWidth(1.0)
+
+def key_callback(window, key, scancode, action, mods):
+    global current_stage, text_pane
+    
+    # Sistema de transição de Fases usando o ENTER
+    if minigame1.is_cleared and key == glfw.KEY_ENTER and action == glfw.PRESS:
+        current_stage += 1
+        
+        if current_stage < TOTAL_STAGES:
+            minigame1.load_stage(current_stage)
+            text_pane.clear()
+            text_pane.write_new_sequence([
+                f"> LOADING MEMORY SECTOR 0{current_stage + 1}...",
+                "> DATASET INJECTED.",
+                "> OPERATOR: REALIGN THE WEIGHTS."
+            ])
+        else:
+            minigame1.feedback_msg = "" # Remove métricas da tela para a mensagem final
+            text_pane.clear()
+            text_pane.write_new_sequence([
+                "> ALL SECTORS RESTORED.",
+                "> LINEAR CLASSIFIER ONLINE.",
+                "> SYSTEM NOMINAL."
+            ])
+        return
+
+    # Se não terminou o jogo, envia as setas e SPACE para o minigame
+    if current_stage < TOTAL_STAGES:
+        minigame1.process_input(key, action, glfw)
 
 def main():
-    width, height = 1200, 860
+    global text_pane
+    if not glfw.init(): return
 
-    # Try to create the game window and check for errors on glfw.init() and glfw.create_window()
-    if not glfw.init():
-        sys.exit(1)
-
-    window = glfw.create_window(width, height, "STACKTRACER", None, None)
+    window = glfw.create_window(WINDOW_WIDTH, WINDOW_HEIGHT, "STACKTRACER // OS", None, None)
     if not window:
         glfw.terminate()
-        sys.exit(1)
+        return
 
     glfw.make_context_current(window)
+    glfw.set_key_callback(window, key_callback)
 
-    # Instantiate the pane to fill the entire window
-    terminal = TextPane(0, 0, width, height)
-
+    # Inicia as classes e o primeiro texto do terminal
+    text_pane = TextPane(0, 0, WINDOW_WIDTH, 300)
+    text_pane.write_new_sequence([
+        "> INIT STACKTRACER OS...",
+        "> MEMORY SECTORS CORRUPTED.",
+        "> LINEAR CLASSIFIER OFFLINE.",
+        "> OPERATOR: REALIGN THE WEIGHTS."
+    ])
+    minigame1.load_stage(current_stage) 
+    
     last_time = glfw.get_time()
 
     while not glfw.window_should_close(window):
-        # NOTE: Need to understand better how delta time works and how it will affect other functionalities of the game.
         current_time = glfw.get_time()
         dt = current_time - last_time
         last_time = current_time
 
-        # NOTE: Here I also use the * Python operator to unpack the individual RGB
-        # color values into the glClearColor red, green, blue arguments.
-        glClearColor(*terminal.bg_color, 1.0)
-        # Clear the screen by drawing pixels of the defined color to the entire screen.
+        glClearColor(0.0, 0.0, 0.0, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
-        # Define standard 2D projection
-        glViewport(0, 0, width, height)
+        fb_width, fb_height = glfw.get_framebuffer_size(window)
+        top_height = int(fb_height * 0.70)
+        bottom_height = fb_height - top_height
+
+        # TOP PANEL (70%)
+        glViewport(0, bottom_height, fb_width, top_height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        # Map OpenGL coordinates directly to window pixels
-        glOrtho(0, width, 0, height, -1, 1)
+        gluOrtho2D(0, fb_width, 0, top_height)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
-        # Run the internal pane object logic
-        terminal.update(dt)
-        terminal.render()
-        terminal.draw_borders()
+        draw_panel_border(fb_width, top_height)
+        minigame1.render(fb_width, top_height)
+
+        # BOTTOM PANEL (30%)
+        glViewport(0, 0, fb_width, bottom_height)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluOrtho2D(0, fb_width, 0, bottom_height)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+
+        draw_panel_border(fb_width, bottom_height)
+        
+        text_pane.w = fb_width
+        text_pane.h = bottom_height
+        
+        metrics = minigame1.get_metrics_string()
+        text_pane.set_metrics(metrics)
+        text_pane.update(dt)
+        text_pane.render()
 
         glfw.swap_buffers(window)
         glfw.poll_events()
 
     glfw.terminate()
-
 
 if __name__ == "__main__":
     main()
